@@ -5,6 +5,7 @@ import {
   SlashCommandBuilder, REST, Routes
 } from "discord.js";
 import dotenv from "dotenv";
+import http from "http";
 dotenv.config();
 
 const client = new Client({
@@ -72,11 +73,14 @@ client.on("interactionCreate", async (interaction) => {
 
     // Create Ticket
     if (interaction.customId === "create_ticket") {
+      // Reply immediately to prevent timeout
+      await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
+
       const existing = guild.channels.cache.find(
         c => c.name === `ticket-${interaction.user.username.toLowerCase()}`
       );
       if (existing) {
-        return interaction.reply({ content: "⚠️ You already have an open ticket!", ephemeral: true });
+        return interaction.editReply({ content: "⚠️ You already have an open ticket!" });
       }
 
       let category = guild.channels.cache.find(
@@ -140,7 +144,7 @@ client.on("interactionCreate", async (interaction) => {
         ],
       });
 
-      await interaction.reply({ content: `✅ Ticket created: ${ticketChannel}`, ephemeral: true });
+      await interaction.editReply({ content: `✅ Ticket created: ${ticketChannel}` });
     }
 
     // Close Ticket
@@ -156,3 +160,12 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 client.login(process.env.TOKEN);
+
+// HTTP server for Render port binding
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Discord bot is running!');
+}).listen(PORT, () => {
+  console.log(`✅ HTTP server listening on port ${PORT}`);
+});
