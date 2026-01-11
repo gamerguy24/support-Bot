@@ -109,8 +109,27 @@ client.on("interactionCreate", async (interaction) => {
         permissionOverwrites: overwrites,
       });
 
+      // Custom welcome embed
+      const welcomeEmbed = new EmbedBuilder()
+        .setTitle("Welcome to Independent Creations")
+        .setDescription(
+          "Thank you for opening a ticket!\n\n" +
+          "Independent Creations specializes in custom iRacing paint designs, made to fit your style and stand out on track.\n\n" +
+          "**Pricing:**\n" +
+          "• Standard Paint — $5\n" +
+          "• Paint w/ Spec Map — $10\n\n" +
+          "**Please include the following to get started:**\n" +
+          "• Car & series\n" +
+          "• Design ideas or references\n" +
+          "• Colors, numbers, and sponsors\n" +
+          "• Deadline (if any)\n\n" +
+          "We'll respond as soon as possible. Thank you for choosing Independent Creations! 🎨"
+        )
+        .setColor(0x5865F2);
+
       await ticketChannel.send({
-        content: `Hello ${interaction.user}, a support team member will be with you shortly!`,
+        content: `${interaction.user}`,
+        embeds: [welcomeEmbed],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
