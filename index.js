@@ -13,8 +13,8 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-const SUPPORT_CATEGORY_NAME = "Tickets";   // Ticket category
-const STAFF_ROLE_NAME = "Support";         // Staff role name
+const SUPPORT_CATEGORY_NAME = "Tickets";
+const STAFF_ROLE_NAME = "Support";
 
 // Register slash commands globally
 const commands = [
@@ -73,8 +73,7 @@ client.on("interactionCreate", async (interaction) => {
 
     // Create Ticket
     if (interaction.customId === "create_ticket") {
-      // Reply immediately to prevent timeout
-      await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
+      await interaction.deferReply({ flags: 64 });
 
       const existing = guild.channels.cache.find(
         c => c.name === `ticket-${interaction.user.username.toLowerCase()}`
@@ -113,7 +112,6 @@ client.on("interactionCreate", async (interaction) => {
         permissionOverwrites: overwrites,
       });
 
-      // Custom welcome embed
       const welcomeEmbed = new EmbedBuilder()
         .setTitle("Welcome to Independent Creations")
         .setDescription(
@@ -163,9 +161,22 @@ client.login(process.env.TOKEN);
 
 // HTTP server for Render port binding
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Discord bot is running!');
 }).listen(PORT, () => {
   console.log(`✅ HTTP server listening on port ${PORT}`);
 });
+
+// Keep-alive system to prevent Render from sleeping
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+if (RENDER_URL) {
+  setInterval(() => {
+    http.get(RENDER_URL, (res) => {
+      console.log(`✅ Keep-alive ping: ${res.statusCode}`);
+    }).on('error', (err) => {
+      console.error('Keep-alive ping failed:', err.message);
+    });
+  }, 14 * 60 * 1000);
+  console.log('🔄 Keep-alive system enabled');
+}
