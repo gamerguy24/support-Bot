@@ -171,12 +171,24 @@ const server = http.createServer((req, res) => {
 // Keep-alive system to prevent Render from sleeping
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 if (RENDER_URL) {
-  setInterval(() => {
-    http.get(RENDER_URL, (res) => {
-      console.log(`✅ Keep-alive ping: ${res.statusCode}`);
-    }).on('error', (err) => {
-      console.error('Keep-alive ping failed:', err.message);
-    });
-  }, 14 * 60 * 1000);
-  console.log('🔄 Keep-alive system enabled');
+  // Wait 5 minutes before starting keep-alive pings
+  setTimeout(() => {
+    setInterval(() => {
+      try {
+        http.get(RENDER_URL, (res) => {
+          if (res.statusCode === 200) {
+            console.log(`✅ Keep-alive ping successful`);
+          }
+        }).on('error', (err) => {
+          console.error('Keep-alive error:', err.message);
+        });
+      } catch (error) {
+        console.error('Keep-alive failed:', error.message);
+      }
+    }, 14 * 60 * 1000); // Ping every 14 minutes
+    console.log('🔄 Keep-alive system started');
+  }, 5 * 60 * 1000); // Start after 5 minutes
+  console.log('⏳ Keep-alive will start in 5 minutes');
+} else {
+  console.log('ℹ️ Keep-alive disabled (no RENDER_EXTERNAL_URL found)');
 }
