@@ -10,6 +10,26 @@ import fs from "fs";
 import path from "path";
 dotenv.config();
 
+// Persistent per-guild messages (stored in messages.json)
+const messagesPath = path.join(process.cwd(), "messages.json");
+let messages = {};
+try {
+  if (fs.existsSync(messagesPath)) {
+    messages = JSON.parse(fs.readFileSync(messagesPath, "utf8") || "{}");
+  }
+} catch (e) {
+  console.error("Failed to read messages.json:", e);
+  messages = {};
+}
+
+function saveMessages() {
+  try {
+    fs.writeFileSync(messagesPath, JSON.stringify(messages, null, 2), "utf8");
+  } catch (e) {
+    console.error("Failed to save messages.json:", e);
+  }
+}
+
 // Replace static intents with a conditional list so MessageContent is only used when explicitly enabled
 const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
 if (process.env.ENABLE_MESSAGE_CONTENT === "true") {
@@ -30,6 +50,14 @@ const commands = [
   new SlashCommandBuilder()
     .setName("setup-tickets")
     .setDescription("Post the ticket panel in this channel (Admin only)"),
+  new SlashCommandBuilder()
+    .setName("set-welcome")
+    .setDescription("Set the welcome embed shown in new tickets for this guild (Admin only)")
+    .addStringOption(opt => opt.setName("title").setDescription("Embed title").setRequired(false))
+    .addStringOption(opt => opt.setName("description").setDescription("Embed description (use \n for newlines)").setRequired(true)),
+  new SlashCommandBuilder()
+    .setName("get-welcome")
+    .setDescription("Show the current welcome embed for this guild"),
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -73,6 +101,40 @@ client.on("interactionCreate", async (interaction) => {
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       return interaction.reply({ content: "✅ Ticket panel created!", ephemeral: true });
+    }
+
+    if (interaction.commandName === "set-welcome") {
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return interaction.reply({ content: "❌ Only admins can set the welcome message.", ephemeral: true });
+      }
+
+      const title = interaction.options.getString("title");
+      const description = interaction.options.getString("description");
+
+      if (!interaction.guildId) {
+        return interaction.reply({ content: "❌ Guild context required.", ephemeral: true });
+      }
+
+      messages[interaction.guildId] = messages[interaction.guildId] || {};
+      if (title) messages[interaction.guildId].welcomeTitle = title;
+      messages[interaction.guildId].welcomeDescription = description;
+      saveMessages();
+
+      return interaction.reply({ content: "✅ Welcome message saved for this server.", ephemeral: true });
+    }
+
+    if (interaction.commandName === "get-welcome") {
+      if (!interaction.guildId) {
+        return interaction.reply({ content: "❌ Guild context required.", ephemeral: true });
+      }
+
+      const gm = messages[interaction.guildId] || {};
+      const embed = new EmbedBuilder()
+        .setTitle(gm.welcomeTitle || "Welcome")
+        .setDescription(gm.welcomeDescription || "No custom welcome message set for this server.")
+        .setColor(0x5865F2);
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 
@@ -121,21 +183,19 @@ client.on("interactionCreate", async (interaction) => {
         permissionOverwrites: overwrites,
       });
 
+      const guildMessages = messages[guild.id] || {};
+      const defaultWelcomeDescription =
+        "Thank you for opening a ticket!\n\n" +
+        "Please tell us what you need help with and a member of staff will assist you shortly.\n\n" +
+        "**Helpful info to include:**\n" +
+        "• What you need help with\n" +
+        "• Any relevant links or screenshots\n" +
+        "• Preferred contact details (if any)\n\n" +
+        "We'll respond as soon as possible."
+
       const welcomeEmbed = new EmbedBuilder()
-        .setTitle("Welcome to Independent Creations")
-        .setDescription(
-          "Thank you for opening a ticket!\n\n" +
-          "Independent Creations specializes in custom iRacing paint designs, made to fit your style and stand out on track.\n\n" +
-          "**Pricing:**\n" +
-          "• Standard Paint — $5\n" +
-          "• Paint w/ Spec Map — $10\n\n" +
-          "**Please include the following to get started:**\n" +
-          "• Car & series\n" +
-          "• Design ideas or references\n" +
-          "• Colors, numbers, and sponsors\n" +
-          "• Deadline (if any)\n\n" +
-          "We'll respond as soon as possible. Thank you for choosing Independent Creations! 🎨"
-        )
+        .setTitle(guildMessages.welcomeTitle || "Welcome")
+        .setDescription(guildMessages.welcomeDescription || defaultWelcomeDescription)
         .setColor(0x5865F2);
 
       await ticketChannel.send({
