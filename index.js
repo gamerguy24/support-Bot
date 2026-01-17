@@ -6,10 +6,12 @@ import {
 } from "discord.js";
 import dotenv from "dotenv";
 import http from "http";
+import fs from "fs";
+import path from "path";
 dotenv.config();
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
   partials: [Partials.Channel],
 });
 
@@ -147,12 +149,72 @@ client.on("interactionCreate", async (interaction) => {
 
     // Close Ticket
     if (interaction.customId === "close_ticket") {
-      if (!interaction.channel.name.startsWith("ticket-")) {
+      if (!interaction.channel.name?.startsWith("ticket-")) {
         return interaction.reply({ content: "❌ This isn't a ticket channel.", ephemeral: true });
       }
 
-      await interaction.reply("🗑️ Closing this ticket in 5 seconds...");
-      setTimeout(() => interaction.channel.delete(), 5000);
+      await interaction.reply("🗑️ Saving transcript and closing this ticket...");
+
+      try {
+        // Fetch all messages in the channel (oldest -> newest)
+        const allMessages = [];
+        let lastId;
+        while (true) {
+          const fetched = await interaction.channel.messages.fetch({ limit: 100, ...(lastId ? { before: lastId } : {}) });
+          if (fetched.size === 0) break;
+          allMessages.push(...fetched.values());
+          if (fetched.size < 100) break;
+          lastId = fetched.last().id;
+        }
+        allMessages.reverse();
+
+        // Build transcript text
+        const header = [
+          `Channel: ${interaction.channel.name}`,
+          `Channel ID: ${interaction.channel.id}`,
+          `Guild: ${interaction.guild?.name} (${interaction.guild?.id})`,
+          `Closed by: ${interaction.user.tag} (${interaction.user.id})`,
+          `Closed at: ${new Date().toISOString()}`,
+          `---`,
+          ''
+        ].join('\n');
+
+        const body = allMessages.map(m => {
+          const time = new Date(m.createdTimestamp).toISOString();
+          const content = m.content || '';
+          const attachments = m.attachments.size ? ` [Attachments: ${m.attachments.map(a => a.url).join(', ')}]` : '';
+          return `[${time}] ${m.author.tag}: ${content}${attachments}`;
+        }).join('\n');
+
+        const transcriptText = header + body;
+
+        // Ensure transcripts directory exists
+        const transcriptsDir = path.join(process.cwd(), 'transcripts');
+        if (!fs.existsSync(transcriptsDir)) fs.mkdirSync(transcriptsDir, { recursive: true });
+
+        // Safe filename
+        const safeChannelName = interaction.channel.name.replace(/[^a-z0-9-_]/gi, '_');
+        const filename = `transcript_${safeChannelName}_${interaction.channel.id}_${Date.now()}.txt`;
+        const filepath = path.join(transcriptsDir, filename);
+
+        fs.writeFileSync(filepath, transcriptText, 'utf8');
+
+        // Attempt to send transcript to a channel named 'ticket-transcripts' if it exists
+        const logChannel = interaction.guild?.channels.cache.find(c => c.name === 'ticket-transcripts' && c.type === ChannelType.GuildText);
+        if (logChannel) {
+          await logChannel.send({
+            content: `Transcript for ${interaction.channel.name} (closed by ${interaction.user.tag})`,
+            files: [filepath],
+          });
+        }
+      } catch (err) {
+        console.error('Failed to save/send transcript:', err);
+      }
+
+      // Delete channel after short delay
+      setTimeout(() => {
+        try { interaction.channel.delete(); } catch (e) { /* ignore */ }
+      }, 5000);
     }
   }
 });
