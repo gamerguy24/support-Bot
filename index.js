@@ -10,9 +10,16 @@ import fs from "fs";
 import path from "path";
 dotenv.config();
 
+// Replace static intents with a conditional list so MessageContent is only used when explicitly enabled
+const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+if (process.env.ENABLE_MESSAGE_CONTENT === "true") {
+	// Make sure you enable the "Message Content Intent" in the Discord Developer Portal and set ENABLE_MESSAGE_CONTENT=true
+	intents.push(GatewayIntentBits.MessageContent);
+}
+
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-  partials: [Partials.Channel],
+	intents,
+	partials: [Partials.Channel],
 });
 
 const SUPPORT_CATEGORY_NAME = "Tickets";
@@ -156,17 +163,31 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply("🗑️ Saving transcript and closing this ticket...");
 
       try {
-        // Fetch all messages in the channel (oldest -> newest)
-        const allMessages = [];
-        let lastId;
-        while (true) {
-          const fetched = await interaction.channel.messages.fetch({ limit: 100, ...(lastId ? { before: lastId } : {}) });
-          if (fetched.size === 0) break;
-          allMessages.push(...fetched.values());
-          if (fetched.size < 100) break;
-          lastId = fetched.last().id;
+        // Try to use the persisted raw log first
+        const rawLogPath = path.join(process.cwd(), "transcripts", "raw", `${interaction.channel.id}.log`);
+        let bodyText = "";
+
+        if (fs.existsSync(rawLogPath)) {
+          bodyText = fs.readFileSync(rawLogPath, "utf8");
+        } else {
+          // Fallback: fetch messages (may require MessageContent intent to have full content)
+          const allMessages = [];
+          let lastId;
+          while (true) {
+            const fetched = await interaction.channel.messages.fetch({ limit: 100, ...(lastId ? { before: lastId } : {}) });
+            if (fetched.size === 0) break;
+            allMessages.push(...fetched.values());
+            if (fetched.size < 100) break;
+            lastId = fetched.last().id;
+          }
+          allMessages.reverse();
+          bodyText = allMessages.map(m => {
+            const time = new Date(m.createdTimestamp).toISOString();
+            const content = m.content || "";
+            const attachments = m.attachments.size ? ` [Attachments: ${m.attachments.map(a => a.url).join(', ')}]` : '';
+            return `[${time}] ${m.author.tag}: ${content}${attachments}`;
+          }).join("\n");
         }
-        allMessages.reverse();
 
         // Build transcript text
         const header = [
@@ -177,19 +198,12 @@ client.on("interactionCreate", async (interaction) => {
           `Closed at: ${new Date().toISOString()}`,
           `---`,
           ''
-        ].join('\n');
+        ].join("\n");
 
-        const body = allMessages.map(m => {
-          const time = new Date(m.createdTimestamp).toISOString();
-          const content = m.content || '';
-          const attachments = m.attachments.size ? ` [Attachments: ${m.attachments.map(a => a.url).join(', ')}]` : '';
-          return `[${time}] ${m.author.tag}: ${content}${attachments}`;
-        }).join('\n');
-
-        const transcriptText = header + body;
+        const transcriptText = header + bodyText;
 
         // Ensure transcripts directory exists
-        const transcriptsDir = path.join(process.cwd(), 'transcripts');
+        const transcriptsDir = path.join(process.cwd(), "transcripts");
         if (!fs.existsSync(transcriptsDir)) fs.mkdirSync(transcriptsDir, { recursive: true });
 
         // Safe filename
@@ -197,7 +211,7 @@ client.on("interactionCreate", async (interaction) => {
         const filename = `transcript_${safeChannelName}_${interaction.channel.id}_${Date.now()}.txt`;
         const filepath = path.join(transcriptsDir, filename);
 
-        fs.writeFileSync(filepath, transcriptText, 'utf8');
+        fs.writeFileSync(filepath, transcriptText, "utf8");
 
         // Attempt to send transcript to a channel named 'ticket-transcripts' if it exists
         const logChannel = interaction.guild?.channels.cache.find(c => c.name === 'ticket-transcripts' && c.type === ChannelType.GuildText);
@@ -207,6 +221,10 @@ client.on("interactionCreate", async (interaction) => {
             files: [filepath],
           });
         }
+
+        // Remove the raw per-channel log after archiving
+        try { if (fs.existsSync(rawLogPath)) fs.unlinkSync(rawLogPath); } catch (e) { /* ignore */ }
+
       } catch (err) {
         console.error('Failed to save/send transcript:', err);
       }
