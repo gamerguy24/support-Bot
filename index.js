@@ -128,8 +128,9 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(
           "Independent Creations specializes in custom IRacing paint designs, made to fit your style and stand out on track.\n\n" +
           "Pricing:\n" +
-          "• Standard Paint — $5\n" +
-          "• Paint w/ Spec Map — $10\n" +
+          "• Standard Wraps (iRacing templates, no spec map) — $10\n" +
+          "• Custom Wraps (more detail, numbers included, spec map available if requested) — $15\n" +
+          "• Replica Wraps (based on real-life cars) — $20\n" +
           "For orders exceeding five paints, a 50% deposit is required upfront. The remaining balance is due upon completion.,\n\n" +
           "Please include the following to get started:\n" +
           "• Car / series\n" +
