@@ -24,6 +24,7 @@ const client = new Client({
 
 const SUPPORT_CATEGORY_NAME = "Tickets";
 const STAFF_ROLE_NAME = "Support";
+const PAINTER_ROLE_NAME = "Painter";
 
 // Register slash commands globally
 const commands = [
@@ -112,6 +113,14 @@ client.on("interactionCreate", async (interaction) => {
       if (staffRole) {
         overwrites.push({
           id: staffRole.id,
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+        });
+      }
+
+      const painterRole = guild.roles.cache.find(r => r.name === PAINTER_ROLE_NAME);
+      if (painterRole) {
+        overwrites.push({
+          id: painterRole.id,
           allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
         });
       }
